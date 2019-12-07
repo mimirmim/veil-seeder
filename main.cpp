@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <atomic>
+#include <iostream>
 
 #include "bitcoin.h"
 #include "db.h"
@@ -32,7 +33,20 @@ public:
   const char *ipv6_proxy;
   std::set<uint64_t> filter_whitelist;
 
-  CDnsSeedOpts() : nThreads(96), nDnsThreads(4), nPort(53), mbox(NULL), ns(NULL), host(NULL), tor(NULL), fUseTestNet(false), fWipeBan(false), fWipeIgnore(false), ipv4_proxy(NULL), ipv6_proxy(NULL) {}
+  CDnsSeedOpts() : 
+      nThreads(96),
+      nDnsThreads(4),
+      nPort(53),
+      mbox(NULL),
+      ns(NULL),
+      host(NULL),
+      tor(NULL),
+      fUseTestNet(false),
+      fWipeBan(false),
+      fWipeIgnore(false),
+      ipv4_proxy(NULL),
+      ipv6_proxy(NULL)
+  {}
 
   void ParseCommandLine(int argc, char **argv) {
     static const char *help = "Bitcoin-seeder\n"
@@ -268,7 +282,9 @@ public:
   }
 
   void run() {
-    dnsserver(&dns_opt);
+    int status = dnsserver(&dns_opt);
+    if (status < 0)
+      printf("Error: DNS Server failed (%d)\n", status);
   }
 };
 

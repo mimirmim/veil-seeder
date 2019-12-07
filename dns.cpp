@@ -11,6 +11,8 @@
 #include <time.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <errno.h>
+#include <iostream>
 
 #include "dns.h"
 
@@ -18,7 +20,7 @@
 
 #if defined(IP_RECVDSTADDR)
 # define DSTADDR_SOCKOPT IP_RECVDSTADDR
-# define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in6_addr)))
+# define DSTADDR_DATASIZE (CMSG_SPACE(sizeof(struct in_addr)))
 # define dstaddr(x) (CMSG_DATA(x))
 #elif defined(IPV6_PKTINFO)
 # define DSTADDR_SOCKOPT IPV6_PKTINFO
@@ -27,11 +29,6 @@
 #else
 # error "can't determine socket option"
 #endif
-
-union control_data {
-  struct cmsghdr cmsg;
-  unsigned char data[DSTADDR_DATASIZE];
-};
 
 typedef enum {
   CLASS_IN = 1,
@@ -317,7 +314,7 @@ ssize_t static dnshandle(dns_opt_t *opt, const unsigned char *inbuf, size_t insi
   unsigned char *outpos = outbuf+(inpos-inbuf);
   unsigned char *outend = outbuf + BUFLEN;
   
-//   printf("DNS: Request host='%s' type=%i class=%i\n", name, typ, cls);
+//  printf("DNS: Request host='%s' type=%i class=%i\n", name, typ, cls);
   
   // calculate max size of authority section
   
@@ -398,81 +395,88 @@ ssize_t static dnshandle(dns_opt_t *opt, const unsigned char *inbuf, size_t insi
   return outpos - outbuf;
 }
 
-static int listenSocket = -1;
-
 int dnsserver(dns_opt_t *opt) {
-  struct sockaddr_in6 si_other;
-  int senderSocket = -1;
-  senderSocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-  if (senderSocket == -1) 
-    return -3;
 
-  int replySocket;
-  if (listenSocket == -1) {
-    struct sockaddr_in6 si_me;
-    if ((listenSocket=socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP))==-1) {
-      listenSocket = -1;
-      return -1;
+    int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sockfd < -1) {
+        printf("socket() failed: %s\n", strerror(errno));
+        return -1;
     }
-    replySocket = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-    if (replySocket == -1)
-    {
-      close(listenSocket);
-      return -1;
-    }
+
     int sockopt = 1;
-    setsockopt(listenSocket, IPPROTO_IPV6, DSTADDR_SOCKOPT, &sockopt, sizeof sockopt);
-    memset((char *) &si_me, 0, sizeof(si_me));
-    si_me.sin6_family = AF_INET6;
-    si_me.sin6_port = htons(opt->port);
-    si_me.sin6_addr = in6addr_any;
-    if (bind(listenSocket, (struct sockaddr*)&si_me, sizeof(si_me))==-1)
-      return -2;
-  }
-  
-  unsigned char inbuf[BUFLEN], outbuf[BUFLEN];
-  struct iovec iov[1] = {
-    {
-      .iov_base = inbuf,
-      .iov_len = sizeof(inbuf),
-    },
-  };
-  union control_data cmsg;
-  struct msghdr msg = {
-    .msg_name = &si_other,
-    .msg_namelen = sizeof(si_other),
-    .msg_iov = iov,
-    .msg_iovlen = 1,
-    .msg_control = &cmsg,
-    .msg_controllen = sizeof(cmsg),
-  };
-  for (; 1; ++(opt->nRequests))
-  {
-    ssize_t insize = recvmsg(listenSocket, &msg, 0);
-//    unsigned char *addr = (unsigned char*)&si_other.sin_addr.s_addr;
-//    printf("DNS: Request %llu from %i.%i.%i.%i:%i of %i bytes\n", (unsigned long long)(opt->nRequests), addr[0], addr[1], addr[2], addr[3], ntohs(si_other.sin_port), (int)insize);
-    if (insize <= 0)
-      continue;
-
-    ssize_t ret = dnshandle(opt, inbuf, insize, outbuf);
-    if (ret <= 0)
-      continue;
-
-    bool handled = false;
-    for (struct cmsghdr*hdr = CMSG_FIRSTHDR(&msg); hdr; hdr = CMSG_NXTHDR(&msg, hdr))
-    {
-      if (hdr->cmsg_level == IPPROTO_IP && hdr->cmsg_type == DSTADDR_SOCKOPT)
-      {
-        msg.msg_iov[0].iov_base = outbuf;
-        msg.msg_iov[0].iov_len = ret;
-        sendmsg(listenSocket, &msg, 0);
-        msg.msg_iov[0].iov_base = inbuf;
-        msg.msg_iov[0].iov_len = sizeof(inbuf);
-        handled = true;
-      }
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof sockopt) < 0) {
+        printf("setsockopt() failed: %s\n", strerror(errno));
+        close(sockfd);
+        return -1;
     }
-    if (!handled)
-      sendto(listenSocket, outbuf, ret, 0, (struct sockaddr*)&si_other, sizeof(si_other));
-  }
-  return 0;
+
+    struct sockaddr_in serveraddr;
+    memset((char *) &serveraddr, 0, sizeof(serveraddr));
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_port = htons(opt->port);
+    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sockfd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) {
+        printf("Bind failed: %s\n", strerror(errno));
+        close(sockfd);
+        return -2;
+    }
+
+    char buffer[128];
+    inet_ntop (AF_INET, &serveraddr.sin_addr, buffer, sizeof(buffer));
+//  printf("Binding to %s %d\n", buffer, ntohs(serveraddr.sin_port));
+  
+    unsigned char inbuf[BUFLEN], outbuf[BUFLEN];
+    struct iovec iov[1];
+    struct sockaddr_in src_addr;
+    struct msghdr message;
+
+    message.msg_name       = &src_addr;
+    message.msg_namelen    = sizeof(src_addr);
+    message.msg_iov        = iov;
+    message.msg_iovlen     = 1;
+    message.msg_control    = 0;
+    message.msg_controllen = 0;
+
+    while (1) {
+        opt->nRequests++;
+        message.msg_iov[0].iov_base = inbuf;
+        message.msg_iov[0].iov_len  = sizeof(inbuf);
+
+        ssize_t nBytes = recvmsg(sockfd, &message, 0);
+        if (-1 == nBytes) {
+            printf("Error: recvmsg failed: %s\n", strerror(errno));
+            continue;
+        }
+
+        unsigned char *addr = (unsigned char*)&src_addr.sin_addr.s_addr;
+        inet_ntop(AF_INET, &src_addr.sin_addr, buffer, sizeof(buffer));
+        printf("DNS: Request %llu from %s:%i of %i bytes\n", (unsigned long long)(opt->nRequests),
+               buffer, ntohs(src_addr.sin_port), (int)nBytes);
+
+        ssize_t ret = dnshandle(opt, inbuf, nBytes, outbuf);
+        if (ret <= 0) {
+            printf("Error: DNS Processing failed: %s\n", strerror(errno));
+            continue;
+        }
+
+        bool handled = false;
+        for (struct cmsghdr*hdr = CMSG_FIRSTHDR(&message); hdr; hdr = CMSG_NXTHDR(&message, hdr)) {
+            if (hdr->cmsg_level == IPPROTO_IP && hdr->cmsg_type == DSTADDR_SOCKOPT) {
+                message.msg_iov[0].iov_base = outbuf;
+                message.msg_iov[0].iov_len = ret;
+
+                nBytes = sendmsg(sockfd, &message, 0);
+                if (-1 == nBytes) {
+                    printf("Error: sendmsg failed: %s\n", strerror(errno));
+                    continue;
+                } else {
+                  handled = true;
+                }
+            }
+        }
+        if (!handled)
+            sendto(sockfd, outbuf, ret, 0, (struct sockaddr*)&src_addr, sizeof(src_addr));
+    }
+    return 0;
 }
