@@ -417,8 +417,43 @@ extern "C" void* ThreadStats(void*) {
   return nullptr;
 }
 
-static const string mainnet_seeds[] = {"seed.veil.rune.network", ""};
-static const string testnet_seeds[] = {"seedtest.veil.rune.network", "veilseedtest.veil-stats.com", "veilseedtest.codeofalltrades.com", ""};
+static const string mainnet_seeds[] =
+    {
+      "node01.veil-project.com",
+      "node02.veil-project.com",
+      "node03.veil-project.com",
+      "node04.veil-project.com",
+      "node05.veil-project.com",
+      "node06.veil-project.com",
+      "node07.veil-project.com",
+      "node08.veil-project.com",
+      "veilseed.veil-stats.com",
+      "seed.veil.rune.network",
+      "veil-seed.pontificatingnobody.com",
+      "116.203.43.112",
+      "159.69.20.168",
+      "94.130.180.117",
+      "94.130.185.98",
+      "195.201.24.97",
+      "116.203.40.38",
+      "195.201.24.15",
+      "195.201.24.37",
+      ""
+    };
+static const string testnet_seeds[] =
+    {
+      "veilseedtestnet.veil-stats.com",
+      "veilseedtest.codeofalltrades.com",
+      "seedtest.veil.rune.network",
+      "veil-seed.test.pontificatingnobody.com",
+      "159.69.223.84",
+      "95.201.21.157",
+      "104.40.2.126",
+      "95.216.169.35",
+      "116.203.45.190",
+      "[2a01:4f8:1c1c:b3b2::1]",
+      ""
+    };
 static const string *seeds = mainnet_seeds;
 
 extern "C" void* ThreadSeeder(void*) {

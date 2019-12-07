@@ -12,11 +12,20 @@
 
 #define MIN_RETRY 1000
 
-#define REQUIRE_VERSION 70001
+static const int MAINNET_REQUIRE_VERSION = 70025;
+static const int TESTNET_REQUIRE_VERSION = 70021;
+
+static const int MAINNET_REQUIRE_HEIGHT = 450000;
+static const int TESTNET_REQUIRE_HEIGHT = 0;
 
 static inline int GetRequireHeight(const bool testnet = fTestNet)
 {
-    return testnet ? 0 : 450000;
+    return testnet ? TESTNET_REQUIRE_HEIGHT : MAINNET_REQUIRE_HEIGHT;
+}
+
+static inline int GetRequireVersion(const bool testnet = fTestNet)
+{
+    return testnet ? TESTNET_REQUIRE_VERSION : MAINNET_REQUIRE_VERSION;
 }
 
 std::string static inline ToString(const CService &ip) {
@@ -104,7 +113,7 @@ public:
     if (ip.GetPort() != GetDefaultPort()) return false;
     if (!(services & NODE_NETWORK)) return false;
     if (!ip.IsRoutable()) return false;
-    if (clientVersion && clientVersion < REQUIRE_VERSION) return false;
+    if (clientVersion && clientVersion < GetRequireVersion()) return false;
     if (blocks && blocks < GetRequireHeight()) return false;
 
     if (total <= 3 && success * 2 >= total) return true;
