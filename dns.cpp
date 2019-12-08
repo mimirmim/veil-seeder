@@ -451,8 +451,8 @@ int dnsserver(dns_opt_t *opt) {
 
         unsigned char *addr = (unsigned char*)&src_addr.sin_addr.s_addr;
         inet_ntop(AF_INET, &src_addr.sin_addr, buffer, sizeof(buffer));
-        printf("DNS: Request %llu from %s:%i of %i bytes\n", (unsigned long long)(opt->nRequests),
-               buffer, ntohs(src_addr.sin_port), (int)nBytes);
+  //      printf("DNS: Request %llu from %s:%i of %i bytes\n", (unsigned long long)(opt->nRequests),
+  //             buffer, ntohs(src_addr.sin_port), (int)nBytes);
 
         ssize_t ret = dnshandle(opt, inbuf, nBytes, outbuf);
         if (ret <= 0) {

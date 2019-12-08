@@ -29,7 +29,6 @@ void CAddrInfo::Update(bool good) {
 //  100.0 * stat1D.reliability, 100.0 * (stat1D.reliability + 1.0 - stat1D.weight), stat1D.count,
 //  100.0 * stat1W.reliability, 100.0 * (stat1W.reliability + 1.0 - stat1W.weight), stat1W.count);
 }
-
 bool CAddrDb::Get_(CServiceResult &ip, int &wait) {
   int64 now = time(NULL);
   int cont = 0;
@@ -81,9 +80,9 @@ void CAddrDb::Good_(const CService &addr, int clientV, std::string clientSV, int
   info.Update(true);
   if (info.IsGood() && goodId.count(id)==0) {
     goodId.insert(id);
-    printf("%s: good; %i good nodes now\n", ToString(addr).c_str(), (int)goodId.size());
+    // printf("%s: good; %i good nodes now\n", ToString(addr).c_str(), (int)goodId.size());
   } else {
-    printf("%s: not good; %i good nodes now\n", ToString(addr).c_str(), (int)goodId.size());
+    // printf("%s: not good; %i good nodes now\n", ToString(addr).c_str(), (int)goodId.size());
   }
   nDirty++;
   ourId.push_back(id);

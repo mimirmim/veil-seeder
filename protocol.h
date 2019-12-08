@@ -15,10 +15,13 @@
 #include <string>
 #include "uint256.h"
 
-extern bool fTestNet;
-static inline unsigned short GetDefaultPort(const bool testnet = fTestNet)
+static const int MAINNET_DEFAULT_PORT = 58810;
+static const int TESTNET_DEFAULT_PORT = 58811;
+
+extern bool fMainNet;
+static inline unsigned short GetDefaultPort(const bool mainnet = fMainNet)
 {
-    return testnet ? 58811 : 58810;
+    return mainnet ? MAINNET_DEFAULT_PORT : TESTNET_DEFAULT_PORT;
 }
 
 //

@@ -12,20 +12,20 @@
 
 #define MIN_RETRY 1000
 
-static const int MAINNET_REQUIRE_VERSION = 70025;
-static const int TESTNET_REQUIRE_VERSION = 70021;
+static const int MAINNET_REQUIRE_VERSION = 70027;
+static const int TESTNET_REQUIRE_VERSION = 70025;
 
 static const int MAINNET_REQUIRE_HEIGHT = 450000;
 static const int TESTNET_REQUIRE_HEIGHT = 0;
 
-static inline int GetRequireHeight(const bool testnet = fTestNet)
+static inline int GetRequireHeight(const bool mainnet = fMainNet)
 {
-    return testnet ? TESTNET_REQUIRE_HEIGHT : MAINNET_REQUIRE_HEIGHT;
+    return mainnet ? MAINNET_REQUIRE_HEIGHT : TESTNET_REQUIRE_HEIGHT;
 }
 
-static inline int GetRequireVersion(const bool testnet = fTestNet)
+static inline int GetRequireVersion(const bool mainnet = fMainNet)
 {
-    return testnet ? TESTNET_REQUIRE_VERSION : MAINNET_REQUIRE_VERSION;
+    return mainnet ? MAINNET_REQUIRE_VERSION : TESTNET_REQUIRE_VERSION;
 }
 
 std::string static inline ToString(const CService &ip) {
@@ -240,7 +240,10 @@ public:
       stats.nTracked = ourId.size();
       stats.nGood = goodId.size();
       stats.nNew = unkId.size();
-      stats.nAge = time(NULL) - idToInfo[ourId[0]].ourLastTry;
+      if (idToInfo[ourId[0]].ourLastTry)
+          stats.nAge = time(NULL) - idToInfo[ourId[0]].ourLastTry;
+      else
+          stats.nAge = 0;
     }
   }
 
@@ -342,8 +345,9 @@ public:
     CRITICAL_BLOCK(cs) {
       while (max > 0) {
           CServiceResult ip = {};
-          if (!Get_(ip, wait))
+          if (!Get_(ip, wait)) {
               return;
+}
           ips.push_back(ip);
           max--;
       }

@@ -15,7 +15,7 @@
 
 using namespace std;
 
-bool fTestNet = false;
+bool fMainNet = true;
 
 class CDnsSeedOpts {
 public:
@@ -350,13 +350,13 @@ int StatCompare(const CAddrReport& a, const CAddrReport& b) {
   }
 }
 
-extern "C" void* ThreadDumper(void*) {
-  int count = 0;
-  do {
-    Sleep(100000 << count); // First 100s, than 200s, 400s, 800s, 1600s, and then 3200s forever
-    if (count < 5)
-        count++;
-    {
+bool isDumpDbRunning = false;
+
+extern "C" void DumpDb() {
+  if (isDumpDbRunning == true) {
+    return;
+  }
+  isDumpDbRunning = true;
       vector<CAddrReport> v = db.GetAll();
       sort(v.begin(), v.end(), StatCompare);
       FILE *f = fopen("dnsseed.dat.new","w+");
@@ -383,7 +383,18 @@ extern "C" void* ThreadDumper(void*) {
       FILE *ff = fopen("dnsstats.log", "a");
       fprintf(ff, "%llu %g %g %g %g %g\n", (unsigned long long)(time(NULL)), stat[0], stat[1], stat[2], stat[3], stat[4]);
       fclose(ff);
-    }
+  isDumpDbRunning = false;
+}
+
+extern "C" void SIGINTHandler(int signum) {
+  DumpDb();
+  exit(0);
+}
+
+extern "C" void* ThreadDumper(void*) {
+  do {
+    sleep(300);  // dump every 5 minutes
+    DumpDb();
   } while(1);
   return nullptr;
 }
@@ -411,7 +422,10 @@ extern "C" void* ThreadStats(void*) {
       requests += dnsThread[i]->dns_opt.nRequests;
       queries += dnsThread[i]->dbQueries;
     }
-    printf("%s %i/%i available (%i tried in %is, %i new, %i active), %i banned; %llu DNS requests, %llu db queries", c, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew, stats.nAvail - stats.nTracked - stats.nNew, stats.nBanned, (unsigned long long)requests, (unsigned long long)queries);
+    printf("%s %i/%i available (%i tried in %is, %i new, %i active), %i banned; %llu DNS requests, %llu db queries",
+           c, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew,
+           stats.nAvail - stats.nTracked - stats.nNew, stats.nBanned,
+           (unsigned long long)requests, (unsigned long long)queries);
     Sleep(1000);
   } while(1);
   return nullptr;
@@ -457,8 +471,8 @@ static const string testnet_seeds[] =
 static const string *seeds = mainnet_seeds;
 
 extern "C" void* ThreadSeeder(void*) {
-  if (!fTestNet){
-    db.Add(CService("127.0.0.1", 58811, false), true);
+  if (!fMainNet){
+    db.Add(CService("127.0.0.1", GetDefaultPort(), false), true);
   }
   do {
     for (int i=0; seeds[i] != ""; i++) {
@@ -515,7 +529,7 @@ int main(int argc, char **argv) {
       pchMessageStart[2] = 0xa7;
       pchMessageStart[3] = 0xc4;
       seeds = testnet_seeds;
-      fTestNet = true;
+      fMainNet = false;
   }
   if (!opts.ns) {
     printf("No nameserver set. Not starting DNS server.\n");
@@ -539,6 +553,7 @@ int main(int argc, char **argv) {
     if (opts.fWipeIgnore)
         db.ResetIgnores();
     printf("done\n");
+    signal(SIGINT, SIGINTHandler);  // Setup a signal handler to dump the database if we ctrl-c
   }
   pthread_t threadDns, threadSeed, threadDump, threadStats;
   if (fDNS) {
