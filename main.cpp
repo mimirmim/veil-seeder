@@ -1,3 +1,25 @@
+// Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2009-2018 Bitcoin Developers
+// Copyright (c) 2019 The Veil Developers
+/*
+** Permission is hereby granted, free of charge, to any person obtaining a copy
+** of this software and associated documentation files (the "Software"), to deal
+** in the Software without restriction, including without limitation the rights
+** to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+** copies of the Software, and to permit persons to whom the Software is
+** furnished to do so, subject to the following conditions:
+**
+** The above copyright notice and this permission notice shall be included in
+** all copies or substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+** THE SOFTWARE.
+*/
 #include <algorithm>
 
 #define __STDC_FORMAT_MACROS
@@ -179,14 +201,14 @@ public:
 
 #include "dns.h"
 
-CAddrDb db;
+CAddrDb AddressDb;
 
 extern "C" void* ThreadCrawler(void* data) {
   int *nThreads=(int*)data;
   do {
     std::vector<CServiceResult> ips;
     int wait = 5;
-    db.GetMany(ips, 16, wait);
+    AddressDb.GetMany(ips, 16, wait);
     int64 now = time(NULL);
     if (ips.empty()) {
       wait *= 1000;
@@ -204,8 +226,8 @@ extern "C" void* ThreadCrawler(void* data) {
       bool getaddr = res.ourLastSuccess + 86400 < now;
       res.fGood = TestNode(res.service,res.nBanTime,res.nClientV,res.strClientV,res.nHeight,getaddr ? &addr : NULL);
     }
-    db.ResultMany(ips);
-    db.Add(addr);
+    AddressDb.ResultMany(ips);
+    AddressDb.Add(addr);
   } while(1);
   return nullptr;
 }
@@ -239,7 +261,7 @@ public:
     thisflag.cacheHits++;
     if (force || thisflag.cacheHits * 400 > (thisflag.cache.size()*thisflag.cache.size()) || (thisflag.cacheHits*thisflag.cacheHits * 20 > thisflag.cache.size() && (now - thisflag.cacheTime > 5))) {
       set<CNetAddr> ips;
-      db.GetIPs(ips, requestedFlags, 1000, nets);
+      AddressDb.GetIPs(ips, requestedFlags, 1000, nets);
       dbQueries++;
       thisflag.cache.clear();
       thisflag.nIPv4 = 0;
@@ -353,40 +375,65 @@ int StatCompare(const CAddrReport& a, const CAddrReport& b) {
 bool isDumpDbRunning = false;
 
 extern "C" void DumpDb() {
-  if (isDumpDbRunning == true) {
-    return;
-  }
-  isDumpDbRunning = true;
-      vector<CAddrReport> v = db.GetAll();
-      sort(v.begin(), v.end(), StatCompare);
-      FILE *f = fopen("dnsseed.dat.new","w+");
-      if (f) {
-        {
-          CAutoFile cf(f);
-          cf << db;
+    if (isDumpDbRunning == true) {
+        printf("Dump is running\n");
+        while (isDumpDbRunning) {
+            sleep(1); // wait for it to finish before dumping
         }
-        rename("dnsseed.dat.new", "dnsseed.dat");
-      }
-      FILE *d = fopen("dnsseed.dump", "w");
-      fprintf(d, "# address                                        good  lastSuccess    %%(2h)   %%(8h)   %%(1d)   %%(7d)  %%(30d)  blocks      svcs  version\n");
-      double stat[5]={0,0,0,0,0};
-      for (vector<CAddrReport>::const_iterator it = v.begin(); it < v.end(); it++) {
+        return;
+    }
+    isDumpDbRunning = true;
+
+    char timeString[256];
+    time_t tim = time(NULL);
+    struct tm *tmp = localtime(&tim);
+    strftime(timeString, 256, "[%y-%m-%d %H:%M:%S]", tmp);
+    CAddrDbStats stats;
+    AddressDb.GetStats(stats);
+    FILE *statsfp = fopen("addrstats.log", "a");
+    fprintf(statsfp, "%s %i/%i available (%i tried in %is, %i new, %i active), %i banned\n",
+           timeString, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew,
+           stats.nAvail - stats.nTracked - stats.nNew, stats.nBanned);
+    fclose(statsfp);
+
+    vector<CAddrReport> vReport = AddressDb.GetAll();
+    sort(vReport.begin(), vReport.end(), StatCompare);
+
+    FILE *f = fopen("dnsseed.dat.new","w+");
+    if (f) {
+        {
+        CAutoFile cf(f);
+        cf << AddressDb;
+        }
+      rename("dnsseed.dat.new", "dnsseed.dat");
+    }
+
+    FILE *d = fopen("dnsseed.dump", "w");
+    fprintf(d, "# address                                        good  lastSuccess    %%(2h)   %%(8h)   %%(1d)   %%(7d)  %%(30d)  blocks      svcs  version\n");
+
+    double stat[5]={0,0,0,0,0};
+    for (vector<CAddrReport>::const_iterator it = vReport.begin(); it < vReport.end(); it++) {
         CAddrReport rep = *it;
-        fprintf(d, "%-47s  %4d  %11" PRId64 "  %6.2f%% %6.2f%% %6.2f%% %6.2f%% %6.2f%%  %6i  %08" PRIx64 "  %5i \"%s\"\n", rep.ip.ToString().c_str(), (int)rep.fGood, rep.lastSuccess, 100.0*rep.uptime[0], 100.0*rep.uptime[1], 100.0*rep.uptime[2], 100.0*rep.uptime[3], 100.0*rep.uptime[4], rep.blocks, rep.services, rep.clientVersion, rep.clientSubVersion.c_str());
+        fprintf(d, "%-47s  %4d  %11" PRId64 "  %6.2f%% %6.2f%% %6.2f%% %6.2f%% %6.2f%%  %6i  %08" PRIx64 "  %5i \"%s\"\n",
+                rep.ip.ToString().c_str(),(int)rep.fGood, rep.lastSuccess, 100.0*rep.uptime[0], 100.0*rep.uptime[1],
+                100.0*rep.uptime[2], 100.0*rep.uptime[3], 100.0*rep.uptime[4], rep.blocks, rep.services,
+                rep.clientVersion, rep.clientSubVersion.c_str());
         stat[0] += rep.uptime[0];
         stat[1] += rep.uptime[1];
         stat[2] += rep.uptime[2];
         stat[3] += rep.uptime[3];
         stat[4] += rep.uptime[4];
-      }
-      fclose(d);
-      FILE *ff = fopen("dnsstats.log", "a");
-      fprintf(ff, "%llu %g %g %g %g %g\n", (unsigned long long)(time(NULL)), stat[0], stat[1], stat[2], stat[3], stat[4]);
-      fclose(ff);
-  isDumpDbRunning = false;
+    }
+    fclose(d);
+
+    FILE *ff = fopen("dnsstats.log", "a");
+    fprintf(ff, "%llu %g %g %g %g %g\n", (unsigned long long)(time(NULL)), stat[0], stat[1], stat[2], stat[3], stat[4]);
+    fclose(ff);
+    isDumpDbRunning = false;
 }
 
 extern "C" void SIGINTHandler(int signum) {
+  printf("\n\nExit Handler invoked\n");
   DumpDb();
   exit(0);
 }
@@ -402,12 +449,12 @@ extern "C" void* ThreadDumper(void*) {
 extern "C" void* ThreadStats(void*) {
   bool first = true;
   do {
-    char c[256];
+    char timeString[256];
     time_t tim = time(NULL);
     struct tm *tmp = localtime(&tim);
-    strftime(c, 256, "[%y-%m-%d %H:%M:%S]", tmp);
+    strftime(timeString, 256, "[%y-%m-%d %H:%M:%S]", tmp);
     CAddrDbStats stats;
-    db.GetStats(stats);
+    AddressDb.GetStats(stats);
     if (first)
     {
       first = false;
@@ -423,7 +470,7 @@ extern "C" void* ThreadStats(void*) {
       queries += dnsThread[i]->dbQueries;
     }
     printf("%s %i/%i available (%i tried in %is, %i new, %i active), %i banned; %llu DNS requests, %llu db queries",
-           c, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew,
+           timeString, stats.nGood, stats.nAvail, stats.nTracked, stats.nAge, stats.nNew,
            stats.nAvail - stats.nTracked - stats.nNew, stats.nBanned,
            (unsigned long long)requests, (unsigned long long)queries);
     Sleep(1000);
@@ -452,6 +499,8 @@ static const string mainnet_seeds[] =
       "116.203.40.38",
       "195.201.24.15",
       "195.201.24.37",
+      "127.0.0.1",
+      "::1",
       ""
     };
 static const string testnet_seeds[] =
@@ -466,20 +515,22 @@ static const string testnet_seeds[] =
       "95.216.169.35",
       "116.203.45.190",
       "[2a01:4f8:1c1c:b3b2::1]",
+      "127.0.0.1",
+      "::1",
       ""
     };
 static const string *seeds = mainnet_seeds;
 
 extern "C" void* ThreadSeeder(void*) {
   if (!fMainNet){
-    db.Add(CService("127.0.0.1", GetDefaultPort(), false), true);
+    AddressDb.Add(CService("127.0.0.1", GetDefaultPort(), false), true);
   }
   do {
     for (int i=0; seeds[i] != ""; i++) {
       vector<CNetAddr> ips;
       LookupHost(seeds[i].c_str(), ips);
       for (vector<CNetAddr>::iterator it = ips.begin(); it != ips.end(); it++) {
-        db.Add(CService(*it, GetDefaultPort()), true);
+        AddressDb.Add(CService(*it, GetDefaultPort()), true);
       }
     }
     Sleep(1800000);
@@ -547,11 +598,11 @@ int main(int argc, char **argv) {
   if (f) {
     printf("Loading dnsseed.dat...");
     CAutoFile cf(f);
-    cf >> db;
+    cf >> AddressDb;
     if (opts.fWipeBan)
-        db.banned.clear();
+        AddressDb.banned.clear();
     if (opts.fWipeIgnore)
-        db.ResetIgnores();
+        AddressDb.ResetIgnores();
     printf("done\n");
     signal(SIGINT, SIGINTHandler);  // Setup a signal handler to dump the database if we ctrl-c
   }

@@ -1,3 +1,25 @@
+// Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2009-2018 Bitcoin Developers
+// Copyright (c) 2019 The Veil Developers
+/*
+** Permission is hereby granted, free of charge, to any person obtaining a copy
+** of this software and associated documentation files (the "Software"), to deal
+** in the Software without restriction, including without limitation the rights
+** to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+** copies of the Software, and to permit persons to whom the Software is
+** furnished to do so, subject to the following conditions:
+**
+** The above copyright notice and this permission notice shall be included in
+** all copies or substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+** THE SOFTWARE.
+*/
 #include <algorithm>
 
 #include "db.h"
@@ -87,8 +109,8 @@ class CNode {
   }
  
   void GotVersion() {
-    // printf("\n%s: version %i\n", ToString(you).c_str(), nVersion);
     if (vAddr) {
+ //     printf("\n%s: %s: Sending getaddr\n", __func__, ToString(you).c_str());
       BeginMessage("getaddr");
       EndMessage();
       doneAfter = time(NULL) + GetTimeout();
@@ -134,7 +156,9 @@ class CNode {
     if (strCommand == "addr" && vAddr) {
       vector<CAddress> vAddrNew;
       vRecv >> vAddrNew;
-      printf("%s: got %i addresses\n", ToString(you).c_str(), (int)vAddrNew.size());
+//      if ((int)vAddrNew.size() > 1)
+//        printf("\n%s: got %i addresses\n", ToString(you).c_str(), (int)vAddrNew.size());
+
       int64 now = time(NULL);
       vector<CAddress>::iterator it = vAddrNew.begin();
       if (vAddrNew.size() > 1) {
@@ -142,13 +166,14 @@ class CNode {
       }
       while (it != vAddrNew.end()) {
         CAddress &addr = *it;
-        printf("%s: got address %s (#%i)\n", ToString(you).c_str(), addr.ToString().c_str(), (int)(vAddr->size()));
+//        printf("%s: got address %s (#%i)\n", ToString(you).c_str(), addr.ToString().c_str(), (int)(vAddr->size()));
         it++;
         if (addr.nTime <= 100000000 || addr.nTime > now + 600)
           addr.nTime = now - 5 * 86400;
-        if (addr.nTime > now - 604800)
+        if (addr.nTime > now - 604800) {
           vAddr->push_back(addr);
-      printf("%s: added address %s (#%i)\n", ToString(you).c_str(), addr.ToString().c_str(), (int)(vAddr->size()));
+//          printf("\n%s: added address %s (#%i)\n", ToString(you).c_str(), addr.ToString().c_str(), (int)(vAddr->size()));
+        }
         if (vAddr->size() > 1000) {doneAfter = 1; return true; }
       }
       return false;
@@ -248,7 +273,9 @@ public:
         vRecv.resize(nPos + nBytes);
         memcpy(&vRecv[nPos], pchBuf, nBytes);
       } else {
-        printf("%s: receive failed: %s\n", __func__, strerror(errno));
+        if (EINPROGRESS != errno) {
+            printf("%s: receive failed: %s\n", __func__, strerror(errno));
+        }
         res = false;
         break;
       }
@@ -301,15 +328,3 @@ bool TestNode(const CService &cip, int &ban, int &clientV, std::string &clientSV
     return false;
   }
 }
-
-/*
-int main(void) {
-  CService ip("bitcoin.sipa.be", 8333, true);
-  vector<CAddress> vAddr;
-  vAddr.clear();
-  int ban = 0;
-  bool ret = TestNode(ip, ban, vAddr);
-  printf("ret=%s ban=%i vAddr.size()=%i\n", ret ? "good" : "bad", ban, (int)vAddr.size());
-}
-*/
-

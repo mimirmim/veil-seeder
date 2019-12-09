@@ -1,3 +1,25 @@
+// Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2009-2018 Bitcoin Developers
+// Copyright (c) 2019 The Veil Developers
+/*
+** Permission is hereby granted, free of charge, to any person obtaining a copy
+** of this software and associated documentation files (the "Software"), to deal
+** in the Software without restriction, including without limitation the rights
+** to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+** copies of the Software, and to permit persons to whom the Software is
+** furnished to do so, subject to the following conditions:
+**
+** The above copyright notice and this permission notice shall be included in
+** all copies or substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+** THE SOFTWARE.
+*/
 #include <stdint.h>
 #include <math.h>
 
@@ -279,38 +301,38 @@ public:
     READWRITE(nVersion);
     SHARED_CRITICAL_BLOCK(cs) {
       if (fWrite) {
-        CAddrDb *db = const_cast<CAddrDb*>(this);
+        CAddrDb *AddressDb = const_cast<CAddrDb*>(this);
         int n = ourId.size() + unkId.size();
         READWRITE(n);
         for (std::deque<int>::const_iterator it = ourId.begin(); it != ourId.end(); it++) {
-          std::map<int, CAddrInfo>::iterator ci = db->idToInfo.find(*it);
+          std::map<int, CAddrInfo>::iterator ci = AddressDb->idToInfo.find(*it);
           READWRITE((*ci).second);
         }
         for (std::set<int>::const_iterator it = unkId.begin(); it != unkId.end(); it++) {
-          std::map<int, CAddrInfo>::iterator ci = db->idToInfo.find(*it);
+          std::map<int, CAddrInfo>::iterator ci = AddressDb->idToInfo.find(*it);
           READWRITE((*ci).second);
         }
       } else {
-        CAddrDb *db = const_cast<CAddrDb*>(this);
-        db->nId = 0;
+        CAddrDb *AddressDb = const_cast<CAddrDb*>(this);
+        AddressDb->nId = 0;
         int n;
         READWRITE(n);
         for (int i=0; i<n; i++) {
           CAddrInfo info;
           READWRITE(info);
           if (!info.GetBanTime()) {
-            int id = db->nId++;
-            db->idToInfo[id] = info;
-            db->ipToId[info.ip] = id;
+            int id = AddressDb->nId++;
+            AddressDb->idToInfo[id] = info;
+            AddressDb->ipToId[info.ip] = id;
             if (info.ourLastTry) {
-              db->ourId.push_back(id);
-              if (info.IsGood()) db->goodId.insert(id);
+              AddressDb->ourId.push_back(id);
+              if (info.IsGood()) AddressDb->goodId.insert(id);
             } else {
-              db->unkId.insert(id);
+              AddressDb->unkId.insert(id);
             }
           }
         }
-        db->nDirty++;
+        AddressDb->nDirty++;
       }
       READWRITE(banned);
     }
